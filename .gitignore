@@ -28,3 +28,20 @@ __pycache__/
 # Per-character rig measurements (setup_rig.py / setup_duo.py). Derived
 # from your own Mixamo downloads, same as rig_profile.json above.
 rig_profiles/
+
+# --- Local additions (Mocap UI, GLB characters, FBX export) ---
+# License-gated or personal assets: the SMPL-X archive must never be
+# redistributed; characters are your own downloads/creations.
+*.zip
+*.glb
+*.gltf
+*.blend
+# Specs the UI / mocap.py writes for your own videos; only the examples ship.
+action_specs/*.json
+!action_specs/combo.json
+!action_specs/duel_ninja.json
+!action_specs/duel_ybot.json
+!action_specs/fight.json
+!action_specs/kungfu_form.json
+!action_specs/spin.json
+!action_specs/tennis.json

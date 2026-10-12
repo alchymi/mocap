@@ -1,5 +1,18 @@
 # Mixamo LLM Mocap
 
+> **Ce dépôt** est basé sur [squall01337/mixamo-llm-mocap](https://github.com/squall01337/mixamo-llm-mocap)
+> (MIT, historique conservé). Ajouts :
+> - **Interface web locale** (`Mocap.bat`) : déposer une vidéo, choisir entrée / sortie sur une
+>   timeline, lancer ; GVHMR → retarget → .blend animé, en un clic.
+> - **`mocap.py`** : toute la chaîne SMPL-X en une commande (`run_test.ps1` en est le raccourci).
+> - **Personnages GLB** (`pipeline/setup_rig_glb.py`) : tout squelette aux noms `mixamorig:`
+>   (Tripo, re-export glTF d'un Mixamo…), remis aux conventions d'un import FBX Mixamo.
+> - **Export FBX « à la Mixamo »** (`pipeline/mocap_fbx_export.py`) : squelette + animation sans
+>   mesh, bouton intégré à chaque .blend généré (vue 3D → `N` → onglet Mocap) et dans l'interface.
+>
+> Installation et utilisation : [SETUP_LOCAL.md](SETUP_LOCAL.md). Le reste de ce README est celui du
+> projet d'origine.
+
 **Turn any locked-camera video — filmed or AI-generated — into a clean
 FK animation on any Mixamo character. One performer, or two fighting
 each other. No mocap suit, no manual keyframing, and every stage

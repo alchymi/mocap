@@ -1,0 +1,10 @@
+{
+  "name": "tennis",
+  "action_name": "Tennis_Test",
+  "clip_dir": "clips/benjamin_tennis",
+  "landmarks": "plates/tennis/landmarks.json",
+  "rig_profile": "rig_profile.json",
+  "estimator": "gvhmr_siga24",
+  "src_fps": 30,
+  "dst_fps": 30
+}

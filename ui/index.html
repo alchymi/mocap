@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mocap</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='7' r='4' fill='%23ff8a3d'/%3E%3Cpath d='M16 12v9m0 0l-6 8m6-8l6 8M7 15h18' stroke='%23ff8a3d' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0e1014;
+  --panel: #161920;
+  --panel-2: #1d2129;
+  --line: #2a2f3a;
+  --text: #e7e9ee;
+  --muted: #8d95a5;
+  --accent: #ff8a3d;
+  --accent-soft: rgba(255, 138, 61, .16);
+  --ok: #3ddc97;
+  --err: #ff6161;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --radius: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 18px 16px 40px; }
+
+header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+header h1 span { color: var(--accent); }
+header .sub { color: var(--muted); }
+@media (max-width: 600px) { header .sub { display: none; } }
+header .spacer { flex: 1; }
+label.inline { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+
+select, input[type=text] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; outline: none; }
+select:focus, input[type=text]:focus { border-color: var(--accent); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.side { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0; }
+
+/* stage */
+.stage { overflow: hidden; }
+.drop { min-height: 440px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; border: 2px dashed var(--line); border-radius: var(--radius); margin: 14px; cursor: pointer;
+  color: var(--muted); text-align: center; padding: 20px; transition: border-color .15s, background .15s; }
+.drop:hover, body.dragging .drop { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.drop strong { font-size: 18px; color: var(--text); }
+.drop svg { width: 46px; height: 46px; opacity: .8; }
+.hint { color: var(--muted); font-size: 12.5px; }
+
+.player { background: #000; display: flex; justify-content: center; position: relative; }
+.player video { display: block; width: 100%; max-height: 62vh; background: #000; }
+.badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.65); padding: 3px 8px;
+  border-radius: 6px; font-size: 12px; color: var(--muted); }
+
+.controls { display: flex; align-items: center; gap: 6px; padding: 10px 12px; flex-wrap: wrap;
+  border-top: 1px solid var(--line); }
+.controls .time { font-family: var(--mono); font-size: 13px; color: var(--muted); min-width: 150px; }
+.controls .spacer { flex: 1; }
+
+.btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: #3a4150; background: #232833; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.icon { padding: 6px 9px; }
+.btn.on { border-color: var(--accent); color: var(--accent); }
+.btn kbd { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0 4px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a0f05; font-weight: 600;
+  justify-content: center; padding: 11px 14px; font-size: 15px; }
+.btn.primary:hover:not(:disabled) { background: #ff9b57; border-color: #ff9b57; }
+.btn.danger:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+.btn.wide { width: 100%; justify-content: center; }
+
+/* timeline */
+.timeline-wrap { padding: 4px 12px 12px; }
+.timeline { position: relative; height: 58px; border-radius: 6px; overflow: hidden; background: #0a0b0e;
+  cursor: pointer; touch-action: none; user-select: none; }
+.timeline canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .9; }
+.shade { position: absolute; top: 0; bottom: 0; background: rgba(8, 9, 12, .72); pointer-events: none; }
+.range { position: absolute; top: 0; bottom: 0; border-top: 3px solid var(--accent);
+  border-bottom: 3px solid var(--accent); pointer-events: none; }
+.handle { position: absolute; top: 0; bottom: 0; width: 12px; background: var(--accent); pointer-events: none;
+  display: flex; align-items: center; justify-content: center; }
+.handle::after { content: ""; width: 2px; height: 18px; background: rgba(0,0,0,.45); border-radius: 1px; }
+.handle.in { transform: translateX(-12px); border-radius: 5px 0 0 5px; }
+.handle.out { border-radius: 0 5px 5px 0; }
+.playhead { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; pointer-events: none;
+  transform: translateX(-1px); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.marks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px;
+  color: var(--muted); margin-top: 6px; gap: 10px; flex-wrap: wrap; }
+.marks b { color: var(--text); font-weight: 500; }
+
+/* side panel bits */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field small { color: var(--muted); }
+.stat { display: flex; justify-content: space-between; color: var(--muted); }
+.stat b { color: var(--text); font-weight: 500; font-family: var(--mono); }
+.bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.note { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; }
+.note.warn { border-color: var(--accent); color: var(--text); }
+.note.err { border-color: var(--err); color: var(--text); }
+
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.steps li { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; padding: 7px 4px;
+  border-radius: 6px; color: var(--muted); }
+.steps li.running { color: var(--text); background: var(--panel-2); }
+.steps li.done, .steps li.skip { color: var(--text); }
+.steps li .sec { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.steps li .prog { grid-column: 2 / 4; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ico { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); justify-self: center; }
+.done .ico { border: none; background: var(--ok); position: relative; }
+.done .ico::after { content: ""; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px;
+  border: solid #0e1014; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.skip .ico { border-color: var(--ok); border-style: dashed; }
+.error .ico, .cancelled .ico { border: none; background: var(--err); }
+.running .ico { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+
+.tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 6px 10px; cursor: pointer;
+  color: var(--muted); }
+.tab.on { color: var(--text); border-color: var(--accent); }
+
+details.log { margin-top: 16px; }
+details.log summary { cursor: pointer; color: var(--muted); padding: 8px 0; }
+details.log pre { margin: 0; max-height: 300px; overflow: auto; background: #0a0b0e; border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: #b9c0cc; white-space: pre-wrap;
+  word-break: break-word; }
+
+.history { margin-top: 26px; }
+.history h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+.clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.clipcard { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  cursor: pointer; text-align: left; padding: 0; }
+.clipcard:hover { border-color: #3a4150; }
+.clipcard video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #000;
+  pointer-events: none; }
+.clipcard div { padding: 8px 10px; display: flex; justify-content: space-between; gap: 8px; }
+.clipcard span { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.empty { color: var(--muted); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Mo<span>cap</span></h1>
+    <div class="sub">vidéo → animation Blender</div>
+    <div class="spacer"></div>
+    <label class="inline">Personnage <select id="character"></select></label>
+  </header>
+
+  <div class="grid">
+    <!-- stage -->
+    <section class="card stage">
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choisir une vidéo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+             stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+        <strong>Dépose une vidéo ici</strong>
+        <div>ou clique pour la choisir</div>
+        <div class="hint">Caméra fixe · une seule personne · corps entier visible, pieds compris · 720p minimum</div>
+      </div>
+      <input id="file" type="file" accept="video/*" hidden>
+      <div id="busy" class="drop" style="cursor:default" hidden>
+        <strong>Traitement en cours</strong>
+        <div>Les vidéos de contrôle apparaîtront ici à la fin.</div>
+      </div>
+
+      <div id="editor" hidden>
+        <div class="player">
+          <video id="video" playsinline preload="auto"></video>
+          <div class="badge" id="badge" hidden></div>
+        </div>
+        <div class="controls" id="ctrls">
+          <button class="btn icon" id="play" title="Lecture / pause (Espace)">▶</button>
+          <button class="btn icon" id="prev" title="Image précédente (←)">◀︎|</button>
+          <button class="btn icon" id="next" title="Image suivante (→)">|▶︎</button>
+          <span class="time" id="time">00:00.00 / 00:00.00</span>
+          <div class="spacer"></div>
+          <button class="btn" id="setIn" title="Point d'entrée à la position courante">[ Entrée <kbd>I</kbd></button>
+          <button class="btn" id="setOut" title="Point de sortie à la position courante">Sortie <kbd>O</kbd> ]</button>
+          <button class="btn" id="loop" title="Lire la sélection en boucle (L)">⟳ Sélection</button>
+          <button class="btn" id="resetRange" title="Toute la vidéo">Tout</button>
+        </div>
+        <div class="timeline-wrap" id="tlwrap">
+          <div class="timeline" id="timeline">
+            <canvas id="strip"></canvas>
+            <div class="shade" id="shadeL"></div>
+            <div class="shade" id="shadeR"></div>
+            <div class="range" id="range"></div>
+            <div class="handle in" id="hIn"></div>
+            <div class="handle out" id="hOut"></div>
+            <div class="playhead" id="playhead"></div>
+          </div>
+          <div class="marks">
+            <span>Entrée <b id="inT">00:00.00</b></span>
+            <span>Sortie <b id="outT">00:00.00</b></span>
+            <span>Durée <b id="durT">0.00 s</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="result" hidden>
+        <div class="tabs" id="tabs"></div>
+        <div class="player"><video id="rvideo" controls loop playsinline></video></div>
+      </div>
+    </section>
+
+    <!-- side panel -->
+    <aside class="card side">
+      <div id="pSetup">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <h2>Préparer</h2>
+          <div class="field">
+            <label for="name">Nom du clip</label>
+            <input type="text" id="name" placeholder="ma_video" autocomplete="off">
+            <small id="clipPath">—</small>
+          </div>
+          <div id="upBox" class="field" hidden>
+            <div class="stat"><span id="upLabel">Envoi de la vidéo</span><b id="upPct">0 %</b></div>
+            <div class="bar"><div id="upBar"></div></div>
+          </div>
+          <div class="stat"><span>Source</span><b id="srcInfo">—</b></div>
+          <div class="stat"><span>Sélection</span><b id="selInfo">—</b></div>
+          <div class="note" id="setupNote">Dépose une vidéo, règle l'entrée et la sortie sur la timeline
+            (poignées orange, ou touches I / O), puis lance.</div>
+          <button class="btn primary" id="run" disabled>Lancer la mocap</button>
+          <button class="btn wide" id="change" hidden>Changer de vidéo</button>
+        </div>
+      </div>
+
+      <div id="pRun" hidden>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <h2 id="runTitle">Traitement</h2>
+          <ul class="steps" id="steps"></ul>
+          <div class="stat"><span>Temps écoulé</span><b id="elapsed">0 s</b></div>
+          <div class="note err" id="runErr" hidden></div>
+          <button class="btn danger wide" id="cancel">Annuler</button>
+          <div id="runEnd" hidden style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn wide" id="retry">Relancer</button>
+            <button class="btn wide" id="newVideo2">Nouvelle vidéo</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pResult" hidden>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <h2 id="resTitle">Résultat</h2>
+          <div class="note" style="border-color:var(--ok)">Animation prête. Ouvre la scène dans Blender pour
+            la voir sur le personnage (action du même nom que le clip).</div>
+          <div class="stat"><span>Personnage</span><b id="resChar">—</b></div>
+          <div class="stat"><span>Extrait</span><b id="resRange">—</b></div>
+          <div class="stat"><span>Durée</span><b id="resDur">—</b></div>
+          <button class="btn primary" id="exportFbx">Exporter le FBX</button>
+          <div class="hint" id="fbxInfo">Squelette + animation, sans mesh, comme un téléchargement Mixamo
+            « Without Skin ». Aussi dans Blender : barre latérale (N) → onglet Mocap.</div>
+          <button class="btn wide" id="openBlend">Ouvrir dans Blender</button>
+          <button class="btn wide" id="openDir">Ouvrir le dossier</button>
+          <button class="btn wide" id="newVideo">Nouvelle vidéo</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <details class="log" id="logBox" hidden>
+    <summary>Journal détaillé</summary>
+    <pre id="log"></pre>
+  </details>
+
+  <section class="history">
+    <h2>Clips précédents</h2>
+    <div class="clips" id="clips"><div class="empty">Aucun clip pour l'instant.</div></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const S = {
+  mode: "drop",            // drop | edit | run | result
+  file: null, upload: null, uploading: false, info: null,
+  dur: 0, fps: 30, tIn: 0, tOut: 0, loop: false,
+  lastRun: null, poll: null, clip: null, clipNames: [],
+};
+const VIDEO_LABELS = { review_front: "Vue d'ensemble", review_three_quarter: "Trois-quarts",
+                       review_details: "Mains & pieds" };
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const fmt = (t) => {
+  if (!isFinite(t)) t = 0;
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+};
+const sanitize = (s) => s.toLowerCase().replace(/[^a-z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "video";
+const charStem = () => sanitize(($("character").value || "Benjamin.glb").replace(/\.[^.]+$/, ""));
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function setMode(m) {
+  S.mode = m;
+  $("drop").hidden = m !== "drop";
+  $("busy").hidden = !(m === "run" && !S.file);
+  $("editor").hidden = !(m === "edit" || (m === "run" && S.file));
+  $("result").hidden = m !== "result";
+  $("pSetup").hidden = !(m === "drop" || m === "edit");
+  $("pRun").hidden = m !== "run";
+  $("pResult").hidden = m !== "result";
+  $("ctrls").style.display = m === "edit" ? "" : "none";
+  $("tlwrap").style.pointerEvents = m === "edit" ? "" : "none";
+  $("tlwrap").style.opacity = m === "edit" ? "" : ".55";
+  $("change").hidden = m !== "edit";
+  $("logBox").hidden = !(m === "run" || m === "result");
+  if (m !== "result") $("rvideo").pause();
+  $("newVideo").textContent = $("newVideo2").textContent = S.file ? "Modifier la sélection" : "Nouvelle vidéo";
+}
+
+/* ---------------- characters ---------------- */
+async function loadCharacters() {
+  const list = await api("/api/characters").catch(() => []);
+  const sel = $("character");
+  sel.innerHTML = "";
+  for (const c of list) {
+    const o = document.createElement("option");
+    o.value = c.file;
+    o.textContent = c.file + (c.ready ? "" : "  (sera préparé)");
+    sel.appendChild(o);
+  }
+  if (!list.length) sel.innerHTML = "<option value=''>aucun .glb/.fbx à la racine</option>";
+  const saved = store.get("mocap.character");
+  if (saved && list.some((c) => c.file === saved)) sel.value = saved;
+  else if (list.some((c) => c.file === "Benjamin.glb")) sel.value = "Benjamin.glb";
+  updateClipPath();
+}
+$("character").addEventListener("change", () => { store.set("mocap.character", $("character").value); updateClipPath(); });
+
+/* ---------------- file in ---------------- */
+$("drop").addEventListener("click", () => $("file").click());
+$("drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); });
+$("file").addEventListener("change", () => $("file").files[0] && takeFile($("file").files[0]));
+$("change").addEventListener("click", () => $("file").click());
+let dragDepth = 0;
+addEventListener("dragenter", (e) => { e.preventDefault(); if (++dragDepth === 1) document.body.classList.add("dragging"); });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", (e) => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  if (S.mode === "run") return;
+  const f = [...(e.dataTransfer?.files || [])].find((f) => f.type.startsWith("video/") || /\.(mp4|mov|m4v|mkv|webm|avi)$/i.test(f.name));
+  if (f) takeFile(f);
+});
+
+function takeFile(f) {
+  S.file = f; S.upload = null; S.info = null; S.dur = 0; S.fps = 30; S.loop = false;
+  $("loop").classList.remove("on");
+  const v = $("video");
+  if (v.dataset.url) URL.revokeObjectURL(v.dataset.url);
+  v.dataset.url = URL.createObjectURL(f);
+  v.dataset.fallback = "";
+  v.dataset.needsPreview = "";
+  v.src = v.dataset.url;
+  $("name").value = sanitize(f.name.replace(/\.[^.]+$/, ""));
+  $("srcInfo").textContent = `${(f.size / 1048576).toFixed(1)} Mo`;
+  $("badge").hidden = true;
+  updateClipPath();
+  setMode("edit");
+  startUpload(f);
+}
+
+function startUpload(f) {
+  S.uploading = true; updateRun();
+  $("upBox").hidden = false; $("upLabel").textContent = "Envoi de la vidéo"; $("upBar").style.width = "0";
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/upload");
+  xhr.setRequestHeader("X-Filename", encodeURIComponent(f.name));
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const p = Math.round((e.loaded / e.total) * 100);
+    $("upBar").style.width = p + "%"; $("upPct").textContent = p + " %";
+  };
+  xhr.onload = () => {
+    S.uploading = false;
+    let j = {};
+    try { j = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status !== 200 || j.error) { note(j.error || "Envoi échoué", "err"); $("upLabel").textContent = "Échec de l'envoi"; updateRun(); return; }
+    if (S.file !== f) return;
+    S.upload = j.upload; S.info = j; S.fps = j.fps || 30;
+    if (!S.dur && j.duration) setDuration(j.duration);
+    $("upLabel").textContent = "Vidéo prête"; $("upPct").textContent = "✓";
+    $("srcInfo").textContent = `${j.width}×${j.height} · ${j.fps.toFixed(2)} fps · ${j.duration.toFixed(1)} s`;
+    if (v().dataset.needsPreview) usePreview();
+    updateSel(); updateRun();
+  };
+  xhr.onerror = () => { S.uploading = false; note("Le serveur ne répond pas (Mocap.bat fermé ?)", "err"); updateRun(); };
+  xhr.send(f);
+}
+const v = () => $("video");
+
+async function usePreview() {
+  const video = v();
+  if (video.dataset.fallback) return;
+  video.dataset.fallback = "1";
+  note("Ce format ne se lit pas dans le navigateur : préparation d'un aperçu…");
+  try {
+    const j = await api("/api/preview", { upload: S.upload });
+    video.src = j.url;
+    $("badge").textContent = "aperçu basse définition"; $("badge").hidden = false;
+    note(defaultNote());
+  } catch (e) { note("Aperçu impossible : " + e.message, "err"); }
+}
+v().addEventListener("error", () => {
+  if (S.mode !== "edit" && S.mode !== "run") return;
+  if (S.upload) usePreview(); else v().dataset.needsPreview = "1";
+});
+
+/* ---------------- player + timeline ---------------- */
+function setDuration(d) {
+  S.dur = d; S.tIn = 0; S.tOut = d;
+  updateSel(); drawTimeline();
+}
+v().addEventListener("loadedmetadata", () => {
+  const d = isFinite(v().duration) ? v().duration : (S.info?.duration || 0);
+  if (!S.dur || Math.abs(S.dur - d) > 0.5) setDuration(d);
+  buildStrip();
+});
+v().addEventListener("timeupdate", tick);
+v().addEventListener("seeked", tick);
+v().addEventListener("play", () => $("play").textContent = "❚❚");
+v().addEventListener("pause", () => $("play").textContent = "▶");
+v().addEventListener("click", togglePlay);
+
+function tick() {
+  const t = v().currentTime;
+  if (S.loop && !v().paused && t >= S.tOut - 0.01) { v().currentTime = S.tIn; }
+  $("time").textContent = `${fmt(t)} / ${fmt(S.dur)}`;
+  if (S.dur) $("playhead").style.left = (t / S.dur) * 100 + "%";
+  if (!v().paused) requestAnimationFrame(tick);
+}
+function togglePlay() {
+  if (S.mode !== "edit") return;
+  if (v().paused) {
+    if (S.loop && (v().currentTime < S.tIn || v().currentTime >= S.tOut - 0.02)) v().currentTime = S.tIn;
+    v().play();
+  } else v().pause();
+}
+function seek(t) { v().currentTime = Math.max(0, Math.min(S.dur, t)); }
+function step(n) { v().pause(); seek(v().currentTime + n / S.fps); }
+function setIn(t) { S.tIn = Math.max(0, Math.min(t, S.tOut - 0.2)); updateSel(); drawTimeline(); }
+function setOut(t) { S.tOut = Math.min(S.dur, Math.max(t, S.tIn + 0.2)); updateSel(); drawTimeline(); }
+
+$("play").onclick = togglePlay;
+$("prev").onclick = () => step(-1);
+$("next").onclick = () => step(1);
+$("setIn").onclick = () => setIn(v().currentTime);
+$("setOut").onclick = () => setOut(v().currentTime);
+$("resetRange").onclick = () => { S.tIn = 0; S.tOut = S.dur; updateSel(); drawTimeline(); };
+$("loop").onclick = () => { S.loop = !S.loop; $("loop").classList.toggle("on", S.loop); };
+
+function drawTimeline() {
+  if (!S.dur) return;
+  const a = (S.tIn / S.dur) * 100, b = (S.tOut / S.dur) * 100;
+  $("shadeL").style.cssText = `left:0;width:${a}%`;
+  $("shadeR").style.cssText = `left:${b}%;right:0`;
+  $("range").style.cssText = `left:${a}%;width:${b - a}%`;
+  $("hIn").style.left = a + "%";
+  $("hOut").style.left = b + "%";
+}
+function updateSel() {
+  const d = Math.max(0, S.tOut - S.tIn);
+  $("inT").textContent = fmt(S.tIn); $("outT").textContent = fmt(S.tOut);
+  $("durT").textContent = d.toFixed(2) + " s";
+  const frames = Math.round(d * Math.min(S.fps || 30, 30));
+  $("selInfo").textContent = S.dur ? `${d.toFixed(1)} s · ${frames} images` : "—";
+  if (S.mode === "edit") note(defaultNote(), d > 30 ? "warn" : "");
+}
+function defaultNote() {
+  const d = S.tOut - S.tIn;
+  if (S.dur && d > 30) return `Sélection de ${d.toFixed(0)} s : ça marche, mais c'est plus long. 5 à 20 s est l'idéal.`;
+  return "Règle l'entrée et la sortie (poignées orange, touches I / O), vérifie que le corps entier reste visible, puis lance.";
+}
+function note(text, kind = "") { const n = $("setupNote"); n.textContent = text; n.className = "note " + kind; }
+
+const tl = $("timeline");
+let drag = null;
+const tAt = (e) => { const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * S.dur; };
+tl.addEventListener("pointerdown", (e) => {
+  if (!S.dur || S.mode !== "edit") return;
+  const r = tl.getBoundingClientRect(), x = e.clientX - r.left;
+  const xi = (S.tIn / S.dur) * r.width, xo = (S.tOut / S.dur) * r.width;
+  drag = Math.abs(x - xi) <= 14 && x <= xi + 6 ? "in" : Math.abs(x - xo) <= 14 && x >= xo - 6 ? "out" : "scrub";
+  if (Math.abs(x - xi) <= 14 && Math.abs(x - xo) <= 14) drag = x < (xi + xo) / 2 ? "in" : "out";
+  tl.setPointerCapture(e.pointerId);
+  v().pause();
+  move(e);
+});
+tl.addEventListener("pointermove", (e) => {
+  if (drag) return move(e);
+  if (!S.dur) return;
+  const r = tl.getBoundingClientRect(), x = e.clientX - r.left;
+  const near = Math.abs(x - (S.tIn / S.dur) * r.width) <= 14 || Math.abs(x - (S.tOut / S.dur) * r.width) <= 14;
+  tl.style.cursor = near ? "ew-resize" : "pointer";
+});
+tl.addEventListener("pointerup", () => { drag = null; });
+tl.addEventListener("pointercancel", () => { drag = null; });
+function move(e) {
+  const t = tAt(e);
+  if (drag === "in") { setIn(t); seek(S.tIn); }
+  else if (drag === "out") { setOut(t); seek(S.tOut); }
+  else seek(t);
+}
+
+addEventListener("keydown", (e) => {
+  if (S.mode !== "edit" || e.target.matches("input, select, textarea")) return;
+  const k = e.key.toLowerCase();
+  if (k === " ") { e.preventDefault(); togglePlay(); }
+  else if (k === "i") setIn(v().currentTime);
+  else if (k === "o") setOut(v().currentTime);
+  else if (k === "l") $("loop").click();
+  else if (k === "arrowleft") { e.preventDefault(); e.shiftKey ? seek(v().currentTime - 1) : step(-1); }
+  else if (k === "arrowright") { e.preventDefault(); e.shiftKey ? seek(v().currentTime + 1) : step(1); }
+  else if (k === "home") seek(S.tIn);
+  else if (k === "end") seek(S.tOut);
+});
+
+let stripToken = 0;
+async function buildStrip() {
+  const token = ++stripToken;
+  const cv = $("strip"), r = tl.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.round(r.height * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#0a0b0e"; ctx.fillRect(0, 0, cv.width, cv.height);
+  const src = v().currentSrc;
+  if (!src || !S.dur) return;
+  const hv = document.createElement("video");
+  hv.muted = true; hv.preload = "auto"; hv.src = src;
+  await new Promise((ok) => { hv.onloadeddata = ok; hv.onerror = ok; setTimeout(ok, 8000); });
+  if (!hv.videoWidth) return;
+  const th = cv.height, tw = Math.round(th * hv.videoWidth / hv.videoHeight);
+  const n = Math.max(1, Math.ceil(cv.width / tw));
+  for (let i = 0; i < n; i++) {
+    if (token !== stripToken) return;
+    hv.currentTime = Math.min(S.dur - 0.05, ((i + 0.5) * tw / cv.width) * S.dur);
+    await new Promise((ok) => { hv.onseeked = ok; setTimeout(ok, 3000); });
+    ctx.drawImage(hv, i * tw, 0, tw, th);
+  }
+  hv.removeAttribute("src"); hv.load();
+}
+let rsz;
+addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => S.mode === "edit" && buildStrip(), 250); });
+
+/* ---------------- run ---------------- */
+function updateClipPath() {
+  const n = sanitize($("name").value || "video");
+  const clip = `${charStem()}_${n}`;
+  $("clipPath").textContent = `→ clips/${clip}/` + (S.clipNames.includes(clip) ? "  (existe déjà : sera remplacé)" : "");
+  $("clipPath").style.color = S.clipNames.includes(clip) ? "var(--accent)" : "";
+}
+$("name").addEventListener("input", updateClipPath);
+function updateRun() {
+  $("run").disabled = !(S.upload && !S.uploading && S.dur && $("character").value);
+  $("run").textContent = S.uploading ? "Envoi en cours…" : "Lancer la mocap";
+}
+$("run").onclick = async () => {
+  const eps = 0.5 / (S.fps || 30);
+  const req = {
+    upload: S.upload, name: sanitize($("name").value || S.info?.name || "video"),
+    character: $("character").value,
+    start: S.tIn > eps ? +S.tIn.toFixed(3) : null,
+    end: S.tOut < S.dur - eps ? +S.tOut.toFixed(3) : null,
+  };
+  try {
+    v().pause();
+    await api("/api/run", req);
+    S.lastRun = req;
+    startPolling();
+  } catch (e) { note(e.message, "err"); }
+};
+
+function startPolling() {
+  setMode("run");
+  $("runErr").hidden = true; $("runEnd").hidden = true; $("cancel").hidden = false;
+  clearInterval(S.poll);
+  S.poll = setInterval(refresh, 1000);
+  refresh();
+}
+async function refresh() {
+  let st;
+  try { st = await api("/api/status"); } catch { return; }
+  renderSteps(st);
+  if (st.state !== "running") {
+    clearInterval(S.poll); S.poll = null;
+    loadClips();
+    if (st.state === "done" && st.clip) showResult(st.clip);
+    else {
+      $("cancel").hidden = true; $("runEnd").hidden = false;
+      $("retry").hidden = !S.lastRun;
+      $("runErr").hidden = false;
+      $("runErr").textContent = st.state === "cancelled" ? "Traitement annulé." : (st.error || "Échec.");
+      $("logBox").open = st.state === "error";
+    }
+  }
+}
+function renderSteps(st) {
+  $("runTitle").textContent = st.name ? `Traitement · ${st.name}` : "Traitement";
+  $("elapsed").textContent = `${Math.round(st.elapsed)} s`;
+  const ul = $("steps");
+  ul.innerHTML = "";
+  for (const s of st.steps) {
+    const li = document.createElement("li");
+    li.className = s.state;
+    const sec = s.state === "skip" ? "déjà fait" : s.seconds != null ? `${Math.round(s.seconds)} s` : "";
+    li.innerHTML = `<span class="ico"></span><span></span><span class="sec">${sec}</span>`;
+    li.children[1].textContent = s.title;
+    if (s.state === "running" && st.progress) {
+      const p = document.createElement("span"); p.className = "prog"; p.textContent = st.progress; li.appendChild(p);
+    }
+    ul.appendChild(li);
+  }
+  const pre = $("log"), atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+  pre.textContent = st.log.join("\n") + (st.progress ? "\n" + st.progress : "");
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+$("cancel").onclick = async () => { if (confirm("Annuler le traitement en cours ?")) await api("/api/cancel", {}); };
+$("retry").onclick = async () => {
+  if (!S.lastRun) return;
+  try { await api("/api/run", S.lastRun); startPolling(); } catch (e) { $("runErr").textContent = e.message; }
+};
+$("newVideo").onclick = $("newVideo2").onclick = newVideo;
+async function newVideo() {
+  await api("/api/reset", {}).catch(() => {});
+  $("rvideo").removeAttribute("src");
+  if (S.file && S.upload) { setMode("edit"); updateSel(); updateRun(); }
+  else { S.file = null; setMode("drop"); }
+  if (!S.file) $("file").value = "";
+}
+
+/* ---------------- result ---------------- */
+async function showResult(clip) {
+  let info;
+  try { info = await api("/api/clip/" + encodeURIComponent(clip)); } catch (e) { return; }
+  S.clip = info.clip;
+  setMode("result");
+  $("resTitle").textContent = info.clip;
+  const sources = [];
+  if (info.source) sources.push(["Vidéo source", info.source]);
+  for (const f of info.videos) sources.push([VIDEO_LABELS[f.replace(".mp4", "")] || f,
+                                             `/media/clips/${encodeURIComponent(info.clip)}/${f}?t=${info.mtime}`]);
+  const tabs = $("tabs");
+  tabs.innerHTML = "";
+  tabs.hidden = sources.length < 2;
+  sources.forEach(([label, url], i) => {
+    const b = document.createElement("button");
+    b.className = "tab"; b.textContent = label;
+    b.onclick = () => {
+      [...tabs.children].forEach((c) => c.classList.toggle("on", c === b));
+      $("rvideo").src = url;
+      $("rvideo").play().catch(() => {});
+    };
+    tabs.appendChild(b);
+    if (i === 0) b.click();
+  });
+  if (!sources.length) $("rvideo").removeAttribute("src");
+  $("openBlend").disabled = $("exportFbx").disabled = !info.blend;
+  $("exportFbx").textContent = info.fbx ? "Réexporter le FBX" : "Exporter le FBX";
+  $("fbxInfo").style.color = "";
+  $("fbxInfo").textContent = info.fbx
+    ? `${info.clip}.fbx est déjà dans le dossier du clip. Squelette + animation, sans mesh.`
+    : "Squelette + animation, sans mesh, comme un téléchargement Mixamo « Without Skin ». Aussi dans Blender : barre latérale (N) → onglet Mocap.";
+  $("resChar").textContent = info.character || "—";
+  $("resRange").textContent = info.start != null || info.end != null
+    ? `${fmt(info.start || 0)} → ${info.end != null ? fmt(info.end) : "fin"}` : info.plate ? "vidéo entière" : "—";
+  $("resDur").textContent = info.duration ? `${info.duration.toFixed(1)} s` : "—";
+}
+$("exportFbx").onclick = async () => {
+  const b = $("exportFbx");
+  b.disabled = true; b.textContent = "Export en cours…";
+  try {
+    const j = await api("/api/export", { clip: S.clip, source_size: true });
+    $("fbxInfo").textContent = `✓ ${j.fbx} (${(j.size / 1048576).toFixed(1)} Mo) exporté dans le dossier du clip.`;
+    $("fbxInfo").style.color = "var(--ok)";
+  } catch (e) {
+    $("fbxInfo").textContent = e.message; $("fbxInfo").style.color = "var(--err)";
+  }
+  b.disabled = false; b.textContent = "Réexporter le FBX";
+};
+$("openBlend").onclick = () => api("/api/open", { clip: S.clip, what: "blend" }).catch((e) => alert(e.message));
+$("openDir").onclick = () => api("/api/open", { clip: S.clip, what: "folder" }).catch((e) => alert(e.message));
+
+/* ---------------- history ---------------- */
+async function loadClips() {
+  const list = await api("/api/clips").catch(() => []);
+  S.clipNames = list.map((c) => c.clip);
+  updateClipPath();
+  const box = $("clips");
+  box.innerHTML = list.length ? "" : `<div class="empty">Aucun clip pour l'instant.</div>`;
+  for (const c of list) {
+    const b = document.createElement("button");
+    b.className = "clipcard";
+    const date = new Date(c.mtime * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+    const dur = c.duration ? `${c.duration.toFixed(1)} s` : "";
+    b.innerHTML = `<video muted preload="metadata"></video><div><strong></strong><span>${dur}</span></div>
+      <div style="padding-top:0"><span>${date}</span></div>`;
+    const thumb = c.source || (c.videos[0] && `/media/clips/${encodeURIComponent(c.clip)}/${c.videos[0]}`);
+    if (thumb) b.querySelector("video").src = thumb + "#t=0.8";
+    b.querySelector("strong").textContent = c.clip;
+    b.onclick = () => { if (S.mode !== "run") { scrollTo({ top: 0, behavior: "smooth" }); showResult(c.clip); } };
+    box.appendChild(b);
+  }
+}
+
+/* ---------------- boot ---------------- */
+(async function boot() {
+  setMode("drop");
+  await loadCharacters();
+  loadClips();
+  const st = await api("/api/status").catch(() => null);
+  if (st && st.state === "running") startPolling();
+})();
+</script>
+</body>
+</html>
